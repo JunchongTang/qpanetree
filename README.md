@@ -3,6 +3,8 @@
 递归分割面板的 QML / C++ 库。把任意 QML 内容嵌进可任意嵌套水平/竖直分屏的容器里，
 带拖拽改尺寸、撤销/重做、持久化。
 
+![](screenshot/demo-1.png)
+
 ## 三个类
 
 - **`QPaneTree::QPaneNode`** —— 树节点。Leaf 持 `viewId`，Split 持 orientation/ratio/first/second。
