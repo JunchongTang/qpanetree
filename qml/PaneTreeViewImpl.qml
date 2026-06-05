@@ -27,7 +27,11 @@ Item {
     property Component leafDelegate
     property Component splitDelegate
     property Component handleDelegate
-    property var node: model ? model.root : null
+    // 顶层 node：maximizedLeaf 非 null 时取它（渲染该 leaf 占满），否则正常树根。
+    // 递归子层的 node 由 splitWrap 传入，不走这个 fallback。
+    property var node: model
+        ? (model.maximizedLeaf ? model.maximizedLeaf : model.root)
+        : null
 
     Loader {
         id: bodyLoader
@@ -58,6 +62,10 @@ Item {
                 })
                 item.PaneTreeView.viewId = Qt.binding(() => {
                     return root.node ? root.node.viewId : ""
+                })
+                item.PaneTreeView.isActive = Qt.binding(() => {
+                    return root.model && root.node
+                        && root.model.activeLeaf === root.node
                 })
             }
         }
