@@ -36,6 +36,9 @@ QString QPaneTreeModel::split(const QString& targetViewId,
         : newViewId;
 
     auto* originalLeaf = QPaneNode::makeLeaf(targetViewId);
+    // 把 target 原本的 data 迁到 originalLeaf——split 后 viewId 保留的那个 leaf
+    // 应该保持业务数据；老 target 节点要变成 Split 不再持 data。
+    originalLeaf->setData(targetLeaf->data());
     auto* newLeaf = QPaneNode::makeLeaf(actualNewId);
 
     // target Leaf 原地升级为 Split——QML 对象指针保持稳定，binding 不丢
@@ -44,6 +47,8 @@ QString QPaneTreeModel::split(const QString& targetViewId,
                                after ? originalLeaf : newLeaf,
                                after ? newLeaf : originalLeaf);
 
+    ensureValidActiveLeaf();
+    ensureValidMaximizedLeaf();
     emit structureChanged();
     emit viewCreated(actualNewId);
     return actualNewId;
@@ -68,6 +73,8 @@ bool QPaneTreeModel::close(const QString& targetViewId)
         m_root = nullptr;
         target->setParent(nullptr);
         target->deleteLater();
+        ensureValidActiveLeaf();
+        ensureValidMaximizedLeaf();
         emit rootChanged();
         emit structureChanged();
         emit viewClosed(targetViewId);
@@ -82,12 +89,15 @@ bool QPaneTreeModel::close(const QString& targetViewId)
         m_root = sibling;
         parent->setParent(nullptr);
         parent->deleteLater();
+        ensureValidActiveLeaf();
+        ensureValidMaximizedLeaf();
         emit rootChanged();
         emit structureChanged();
     } else {
-        // parent 不是根——把 sibling 的内容搬到 parent，删除 sibling
+        // parent 不是根——把 sibling 的内容搬到 parent，删除 sibling。
+        // sibling 是 leaf 时，连同 data 一起迁移到 parent。
         if (sibling->isLeaf()) {
-            demoteNodeToLeaf(parent, sibling->viewId());
+            demoteNodeToLeaf(parent, sibling->viewId(), sibling->data());
         } else {
             parent->promoteToSplit(sibling->orientation(),
                                    sibling->ratio(),
@@ -96,6 +106,8 @@ bool QPaneTreeModel::close(const QString& targetViewId)
         }
         sibling->setParent(nullptr);
         sibling->deleteLater();
+        ensureValidActiveLeaf();
+        ensureValidMaximizedLeaf();
         emit structureChanged();
     }
 
@@ -143,6 +155,8 @@ void QPaneTreeModel::reset(const QString& viewId)
     m_root = QPaneNode::makeLeaf(viewId, this);
     m_undoStack.clear();
     m_redoStack.clear();
+    ensureValidActiveLeaf();
+    ensureValidMaximizedLeaf();
     emit rootChanged();
     emit structureChanged();
     emit historyChanged();
@@ -156,10 +170,56 @@ bool QPaneTreeModel::createRootLeaf(const QString& viewId)
     }
     pushUndoState();
     m_root = QPaneNode::makeLeaf(viewId, this);
+    ensureValidActiveLeaf();
+    ensureValidMaximizedLeaf();
     emit rootChanged();
     emit structureChanged();
     emit viewCreated(viewId);
     return true;
+}
+
+void QPaneTreeModel::setActiveLeaf(QPaneNode* leaf)
+{
+    if (m_activeLeaf == leaf) {
+        return;
+    }
+    // 只能设到树里的某个 leaf，或 nullptr。防止外部传野指针。
+    if (leaf && !findNodeById(m_root, leaf->nodeId())) {
+        qCWarning(lcPaneTree) << "setActiveLeaf: leaf not in current tree";
+        return;
+    }
+    if (leaf && !leaf->isLeaf()) {
+        qCWarning(lcPaneTree) << "setActiveLeaf: target is not a leaf";
+        return;
+    }
+    m_activeLeaf = leaf;
+    emit activeLeafChanged();
+}
+
+void QPaneTreeModel::setMaximizedLeaf(QPaneNode* leaf)
+{
+    if (m_maximizedLeaf == leaf) {
+        return;
+    }
+    if (leaf && !findNodeById(m_root, leaf->nodeId())) {
+        qCWarning(lcPaneTree) << "setMaximizedLeaf: leaf not in current tree";
+        return;
+    }
+    if (leaf && !leaf->isLeaf()) {
+        qCWarning(lcPaneTree) << "setMaximizedLeaf: target is not a leaf";
+        return;
+    }
+    m_maximizedLeaf = leaf;
+    emit maximizedLeafChanged();
+}
+
+void QPaneTreeModel::toggleMaximize(QPaneNode* leaf)
+{
+    if (m_maximizedLeaf == leaf) {
+        setMaximizedLeaf(nullptr);
+    } else {
+        setMaximizedLeaf(leaf);
+    }
 }
 
 bool QPaneTreeModel::flipOrientation(const QString& nodeId)
@@ -236,6 +296,86 @@ QStringList QPaneTreeModel::allViewIds() const
     QStringList ids;
     collectViewIds(m_root, ids);
     return ids;
+}
+
+namespace {
+
+void collectLeavesImpl(QPaneNode* node, QList<QPaneNode*>& out)
+{
+    if (!node) {
+        return;
+    }
+    if (node->isLeaf()) {
+        out.append(node);
+        return;
+    }
+    collectLeavesImpl(node->first(), out);
+    collectLeavesImpl(node->second(), out);
+}
+
+QPaneNode* findParentImpl(QPaneNode* root, QPaneNode* target)
+{
+    if (!root || root == target || !root->isSplit()) {
+        return nullptr;
+    }
+    if (root->first() == target || root->second() == target) {
+        return root;
+    }
+    if (auto* p = findParentImpl(root->first(), target)) {
+        return p;
+    }
+    return findParentImpl(root->second(), target);
+}
+
+} // anonymous namespace
+
+QList<QPaneNode*> QPaneTreeModel::allLeaves() const
+{
+    QList<QPaneNode*> out;
+    collectLeavesImpl(m_root, out);
+    return out;
+}
+
+QPaneNode* QPaneTreeModel::parentOf(QPaneNode* node) const
+{
+    if (!node) {
+        return nullptr;
+    }
+    return findParentImpl(m_root, node);
+}
+
+QPaneNode* QPaneTreeModel::siblingOf(QPaneNode* node) const
+{
+    QPaneNode* parent = parentOf(node);
+    if (!parent) {
+        return nullptr;
+    }
+    return parent->first() == node ? parent->second() : parent->first();
+}
+
+void QPaneTreeModel::focusNext()
+{
+    const auto leaves = allLeaves();
+    if (leaves.isEmpty()) {
+        return;
+    }
+    int idx = leaves.indexOf(m_activeLeaf.data());
+    idx = (idx + 1) % leaves.size();
+    setActiveLeaf(leaves.at(idx));
+}
+
+void QPaneTreeModel::focusPrevious()
+{
+    const auto leaves = allLeaves();
+    if (leaves.isEmpty()) {
+        return;
+    }
+    int idx = leaves.indexOf(m_activeLeaf.data());
+    if (idx < 0) {
+        idx = 0;
+    }
+    idx = (idx - 1 + leaves.size()) % leaves.size();
+    setActiveLeaf(leaves.at(idx));
 }
 
 QPaneNode* QPaneTreeModel::findLeafById(QPaneNode* node, const QString& viewId) const
@@ -343,13 +483,63 @@ void QPaneTreeModel::setRoot(QPaneNode* newRoot)
     if (m_root) {
         m_root->setParent(this);
     }
+    ensureValidActiveLeaf();
+        ensureValidMaximizedLeaf();
     emit rootChanged();
     emit structureChanged();
 }
 
-void QPaneTreeModel::demoteNodeToLeaf(QPaneNode* node, const QString& viewId)
+void QPaneTreeModel::demoteNodeToLeaf(QPaneNode* node,
+                                      const QString& viewId,
+                                      const QVariant& data)
 {
-    node->demoteToLeaf(viewId);
+    node->demoteToLeaf(viewId, data);
+}
+
+QPaneNode* QPaneTreeModel::firstLeaf(QPaneNode* node) const
+{
+    if (!node) {
+        return nullptr;
+    }
+    if (node->isLeaf()) {
+        return node;
+    }
+    if (auto* f = firstLeaf(node->first())) {
+        return f;
+    }
+    return firstLeaf(node->second());
+}
+
+// 树结构变化后调一下：m_activeLeaf 若被销毁（QPointer 自动 null）或不再在
+// 当前树里，回退到第一个 leaf；树为空则置 null。
+void QPaneTreeModel::ensureValidActiveLeaf()
+{
+    QPaneNode* prev = m_activeLeaf.data();
+    const bool stillValid = prev
+        && prev->isLeaf()
+        && findNodeById(m_root, prev->nodeId()) == prev;
+    if (stillValid) {
+        return;
+    }
+    QPaneNode* fallback = firstLeaf(m_root);
+    m_activeLeaf = fallback;
+    emit activeLeafChanged();
+}
+
+// maximizedLeaf 若不再有效（被关闭、降级），清空。不自动回退到别的 leaf。
+void QPaneTreeModel::ensureValidMaximizedLeaf()
+{
+    QPaneNode* prev = m_maximizedLeaf.data();
+    if (!prev) {
+        return;
+    }
+    const bool stillValid = prev->isLeaf()
+        && findNodeById(m_root, prev->nodeId()) == prev;
+    if (stillValid) {
+        return;
+    }
+    m_maximizedLeaf = nullptr;
+    emit maximizedLeafChanged();
 }
 
 namespace {
