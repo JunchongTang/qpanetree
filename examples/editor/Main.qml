@@ -113,6 +113,58 @@ ApplicationWindow {
                 onCloseRequested: paneTree.close(viewId)
             }
         }
+
+        // 三点药丸样式的 handle —— PaneTreeView.orientation attached 由库注入
+        handleDelegate: Component {
+            Rectangle {
+                id: handleRoot
+                readonly property int _orient: PaneTreeView.orientation
+                readonly property bool _horiz: _orient === Qt.Horizontal
+                implicitWidth: _horiz ? 7 : 0
+                implicitHeight: _horiz ? 0 : 7
+                color: "#2d2d2d"
+
+                // 中线
+                Rectangle {
+                    anchors.centerIn: parent
+                    width: handleRoot._horiz ? 1 : parent.width
+                    height: handleRoot._horiz ? parent.height : 1
+                    color: "#3e3e42"
+                    opacity: 0.8
+                }
+                // 中段药丸
+                Rectangle {
+                    anchors.centerIn: parent
+                    width: handleRoot._horiz ? 5 : 30
+                    height: handleRoot._horiz ? 30 : 5
+                    radius: 3
+                    color: SplitHandle.pressed ? "#569cd6"
+                         : SplitHandle.hovered ? "#3e3e42"
+                         :                       "#2d2d2d"
+                    border.width: 0.5
+                    border.color: "#555"
+                    Behavior on color { ColorAnimation { duration: 100 } }
+                    // 三个点
+                    Item {
+                        anchors.centerIn: parent
+                        width: handleRoot._horiz ? 1 : 11
+                        height: handleRoot._horiz ? 11 : 1
+                        Repeater {
+                            model: 3
+                            delegate: Rectangle {
+                                required property int index
+                                width: 1
+                                height: 1
+                                radius: 0.5
+                                x: handleRoot._horiz ? 0 : index * 5
+                                y: handleRoot._horiz ? index * 5 : 0
+                                color: "#858585"
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     // 空树时显示 empty-state 提示（覆盖在 PaneTreeView 上）

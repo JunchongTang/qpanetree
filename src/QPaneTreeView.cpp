@@ -102,11 +102,13 @@ void QPaneTreeView::rebuildImpl()
         return;
     }
     QVariantMap initial;
-    initial[QStringLiteral("view")] = QVariant::fromValue<QObject*>(this);
-    initial[QStringLiteral("model")] = QVariant::fromValue<QObject*>(m_model);
-    initial[QStringLiteral("leafDelegate")] = QVariant::fromValue<QObject*>(m_leafDelegate);
-    initial[QStringLiteral("splitDelegate")] = QVariant::fromValue<QObject*>(m_splitDelegate);
-    initial[QStringLiteral("handleDelegate")] = QVariant::fromValue<QObject*>(m_handleDelegate);
+    // 用静态类型 fromValue —— QVariant 标记成 QQmlComponent* 而不是 QObject*，
+    // QML 才能把它当成 `property Component` 的合法赋值（QObject* 不自动 cast）。
+    initial[QStringLiteral("view")] = QVariant::fromValue<QPaneTreeView*>(this);
+    initial[QStringLiteral("model")] = QVariant::fromValue<QPaneTreeModel*>(m_model);
+    initial[QStringLiteral("leafDelegate")] = QVariant::fromValue(m_leafDelegate);
+    initial[QStringLiteral("splitDelegate")] = QVariant::fromValue(m_splitDelegate);
+    initial[QStringLiteral("handleDelegate")] = QVariant::fromValue(m_handleDelegate);
 
     QObject* obj = comp.createWithInitialProperties(initial, qmlContext(this));
     m_impl = qobject_cast<QQuickItem*>(obj);
