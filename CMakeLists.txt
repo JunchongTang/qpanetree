@@ -19,6 +19,7 @@ endif()
 find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Quick QuickControls2 Qml)
 
 option(QPANETREE_BUILD_EXAMPLES "Build qpanetree example apps" OFF)
+option(QPANETREE_BUILD_TESTS "Build qpanetree unit tests" OFF)
 
 qt_add_library(qpanetree STATIC)
 
@@ -56,4 +57,9 @@ target_link_libraries(qpanetree PUBLIC
 
 if(QPANETREE_BUILD_EXAMPLES)
     add_subdirectory(examples/editor)
+endif()
+
+if(QPANETREE_BUILD_TESTS)
+    enable_testing()
+    add_subdirectory(tests)
 endif()
