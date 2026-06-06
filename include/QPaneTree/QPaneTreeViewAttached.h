@@ -32,6 +32,8 @@ class QPaneTreeViewAttached : public QObject
     Q_PROPERTY(QString nodeId READ nodeId WRITE setNodeId NOTIFY changed)
     Q_PROPERTY(Qt::Orientation orientation READ orientation WRITE setOrientation NOTIFY changed)
     Q_PROPERTY(qreal ratio READ ratio WRITE setRatio NOTIFY changed)
+    // 仅 leaf delegate 上有效——是否是 PaneTreeModel.activeLeaf
+    Q_PROPERTY(bool isActive READ isActive WRITE setIsActive NOTIFY changed)
 
 public:
     explicit QPaneTreeViewAttached(QObject* attachee);
@@ -42,6 +44,7 @@ public:
     QString nodeId() const { return m_nodeId; }
     Qt::Orientation orientation() const { return m_orientation; }
     qreal ratio() const { return m_ratio; }
+    bool isActive() const { return m_isActive; }
 
     void setNode(QPaneNode* n);
     void setModel(QPaneTreeModel* m);
@@ -49,6 +52,7 @@ public:
     void setNodeId(const QString& v);
     void setOrientation(Qt::Orientation o);
     void setRatio(qreal r);
+    void setIsActive(bool a);
 
     // 用户在 splitDelegate.onResizingChanged 里调：
     //   onResizingChanged: if (!resizing) PaneTreeView.commitRatio(this)
@@ -66,6 +70,7 @@ private:
     QString m_nodeId;
     Qt::Orientation m_orientation = Qt::Horizontal;
     qreal m_ratio = 0.5;
+    bool m_isActive = false;
 };
 
 } // namespace QPaneTree

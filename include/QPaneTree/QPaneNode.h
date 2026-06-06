@@ -2,6 +2,7 @@
 
 #include <QObject>
 #include <QString>
+#include <QVariant>
 #include <QVariantMap>
 #include <QtQml/qqmlregistration.h>
 #include <Qt>
@@ -28,6 +29,9 @@ class QPaneNode : public QObject
     Q_PROPERTY(QPaneNode* second READ second NOTIFY secondChanged)
     Q_PROPERTY(bool isLeaf READ isLeaf NOTIFY nodeTypeChanged)
     Q_PROPERTY(bool isSplit READ isSplit NOTIFY nodeTypeChanged)
+    // 业务可读写的自定义数据。任意 QVariant —— 通常是 QVariantMap 装多个字段。
+    // 持久化时自动 round-trip。
+    Q_PROPERTY(QVariant data READ data WRITE setData NOTIFY dataChanged)
 
 public:
     enum class NodeType { Leaf, Split };
@@ -51,6 +55,7 @@ public:
     qreal ratio() const { return m_ratio; }
     QPaneNode* first() const { return m_first; }
     QPaneNode* second() const { return m_second; }
+    QVariant data() const { return m_data; }
 
     // 内部写入——只该被 QPaneTreeModel 调
     void setRatio(qreal ratio);
@@ -58,13 +63,14 @@ public:
     void setSecond(QPaneNode* node);
     void setOrientation(Qt::Orientation o);
     void setViewId(const QString& id);
+    void setData(const QVariant& data);
 
     // Leaf ↔ Split 原地切换——保持 QML 对象指针稳定，binding 不丢
     void promoteToSplit(Qt::Orientation orientation,
                         qreal ratio,
                         QPaneNode* first,
                         QPaneNode* second);
-    void demoteToLeaf(const QString& viewId);
+    void demoteToLeaf(const QString& viewId, const QVariant& data = {});
 
     // 序列化
     QVariantMap toVariantMap() const;
@@ -77,6 +83,7 @@ signals:
     void ratioChanged();
     void firstChanged();
     void secondChanged();
+    void dataChanged();
 
 private:
     explicit QPaneNode(QObject* parent = nullptr);
@@ -88,6 +95,7 @@ private:
     qreal m_ratio = 0.5;
     QPaneNode* m_first = nullptr;
     QPaneNode* m_second = nullptr;
+    QVariant m_data;
 };
 
 } // namespace QPaneTree
