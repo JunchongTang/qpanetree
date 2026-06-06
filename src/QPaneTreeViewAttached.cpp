@@ -1,6 +1,7 @@
 #include "QPaneTree/QPaneTreeViewAttached.h"
 #include "QPaneTree/QPaneNode.h"
 #include "QPaneTree/QPaneTreeModel.h"
+#include "QPaneTree/QPaneTreeView.h"
 
 #include <QQmlListReference>
 #include <QQuickItem>
@@ -11,6 +12,15 @@ namespace QPaneTree {
 QPaneTreeViewAttached::QPaneTreeViewAttached(QObject* attachee)
     : QObject(attachee)
 {
+}
+
+void QPaneTreeViewAttached::setView(QPaneTreeView* v)
+{
+    if (m_view == v) {
+        return;
+    }
+    m_view = v;
+    emit changed();
 }
 
 void QPaneTreeViewAttached::setNode(QPaneNode* n)
