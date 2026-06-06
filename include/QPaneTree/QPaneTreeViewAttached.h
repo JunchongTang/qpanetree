@@ -25,7 +25,12 @@ class QPaneTreeView;
 class QPaneTreeViewAttached : public QObject
 {
     Q_OBJECT
+    // QML_ANONYMOUS：让 QML 类型系统把这个类作为合法的 attached type 注册。
+    // 没有这个，`item.PaneTreeView.view = x` 看起来生效但 QML 实际上每次访问
+    // 都返回一个新实例——写入立刻被丢弃，再读就是 undefined。
+    QML_ANONYMOUS
 
+    Q_PROPERTY(QPaneTree::QPaneTreeView* view READ view WRITE setView NOTIFY changed)
     Q_PROPERTY(QPaneTree::QPaneNode* node READ node WRITE setNode NOTIFY changed)
     Q_PROPERTY(QPaneTree::QPaneTreeModel* model READ model WRITE setModel NOTIFY changed)
     Q_PROPERTY(QString viewId READ viewId WRITE setViewId NOTIFY changed)
@@ -38,6 +43,7 @@ class QPaneTreeViewAttached : public QObject
 public:
     explicit QPaneTreeViewAttached(QObject* attachee);
 
+    QPaneTreeView* view() const { return m_view; }
     QPaneNode* node() const { return m_node; }
     QPaneTreeModel* model() const { return m_model; }
     QString viewId() const { return m_viewId; }
@@ -46,6 +52,7 @@ public:
     qreal ratio() const { return m_ratio; }
     bool isActive() const { return m_isActive; }
 
+    void setView(QPaneTreeView* v);
     void setNode(QPaneNode* n);
     void setModel(QPaneTreeModel* m);
     void setViewId(const QString& v);
@@ -64,6 +71,7 @@ signals:
     void changed();
 
 private:
+    QPointer<QPaneTreeView> m_view;
     QPointer<QPaneNode> m_node;
     QPointer<QPaneTreeModel> m_model;
     QString m_viewId;
