@@ -475,6 +475,15 @@ void QPaneTreeModel::pushUndoState()
 
 void QPaneTreeModel::setRoot(QPaneNode* newRoot)
 {
+    // 收集老树 / 新树各自的 leaf viewId 集合 —— restoreState / undo / redo
+    // 都走这条路替整棵树，宿主很可能按 leaf 维护 per-view 状态（registry /
+    // 池 / 句柄）。setRoot 不发 viewClosed/viewCreated 的话，宿主只能在每次
+    // structureChanged 后自己 diff allViewIds，繁琐且容易漏；这里直接发出来。
+    QStringList oldIds;
+    collectViewIds(m_root, oldIds);
+    QStringList newIds;
+    collectViewIds(newRoot, newIds);
+
     if (m_root) {
         m_root->setParent(nullptr);
         m_root->deleteLater();
@@ -484,9 +493,23 @@ void QPaneTreeModel::setRoot(QPaneNode* newRoot)
         m_root->setParent(this);
     }
     ensureValidActiveLeaf();
-        ensureValidMaximizedLeaf();
+    ensureValidMaximizedLeaf();
     emit rootChanged();
     emit structureChanged();
+
+    // 老树有 / 新树没有 → 真的关掉了
+    for (const QString& id : oldIds) {
+        if (!newIds.contains(id)) {
+            emit viewClosed(id);
+        }
+    }
+    // 新树有 / 老树没有 → 新建。同名 viewId 在两边都存在视作"延续"，不发
+    // viewClosed+viewCreated 配对，避免宿主侧的 registry 把 model 销毁重建。
+    for (const QString& id : newIds) {
+        if (!oldIds.contains(id)) {
+            emit viewCreated(id);
+        }
+    }
 }
 
 void QPaneTreeModel::demoteNodeToLeaf(QPaneNode* node,
