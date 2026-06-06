@@ -44,17 +44,33 @@ ApplicationWindow {
             ToolButton {
                 text: "⊞ 水平分屏"
                 onClicked: {
-                    // 空树先建根 leaf；非空就 split 第一个 leaf。
-                    if (!paneTree.createRootLeaf("editor-1"))
-                        paneTree.split(paneTree.allViewIds()[0], Qt.Horizontal)
+                    if (paneTree.createRootLeaf("editor-1")) return
+                    const target = paneTree.activeLeaf
+                        ? paneTree.activeLeaf.viewId
+                        : paneTree.allViewIds()[0]
+                    paneTree.split(target, Qt.Horizontal)
                 }
             }
             ToolButton {
                 text: "⊟ 垂直分屏"
                 onClicked: {
-                    if (!paneTree.createRootLeaf("editor-1"))
-                        paneTree.split(paneTree.allViewIds()[0], Qt.Vertical)
+                    if (paneTree.createRootLeaf("editor-1")) return
+                    const target = paneTree.activeLeaf
+                        ? paneTree.activeLeaf.viewId
+                        : paneTree.allViewIds()[0]
+                    paneTree.split(target, Qt.Vertical)
                 }
+            }
+            Rectangle { width: 1; height: 20; color: "#555" }
+            ToolButton {
+                text: "← 前一个"
+                ToolTip.text: "focusPrevious()"; ToolTip.visible: hovered
+                onClicked: paneTree.focusPrevious()
+            }
+            ToolButton {
+                text: "→ 后一个"
+                ToolTip.text: "focusNext()"; ToolTip.visible: hovered
+                onClicked: paneTree.focusNext()
             }
             Rectangle { width: 1; height: 20; color: "#555" }
             ToolButton {
@@ -73,6 +89,8 @@ ApplicationWindow {
             Item { Layout.fillWidth: true }
             Label {
                 text: "面板数: " + paneTree.leafCount
+                    + (paneTree.maximizedLeaf ? " · 最大化" : "")
+                    + (paneTree.activeLeaf ? " · active=" + paneTree.activeLeaf.viewId : "")
                 color: "#858585"
                 font.pixelSize: 12
             }
@@ -87,7 +105,9 @@ ApplicationWindow {
         leafDelegate: Component {
             EditorPanel {
                 onSplitHorizontalRequested: paneTree.split(viewId, Qt.Horizontal)
-                onSplitVerticalRequested:   paneTree.split(viewId, Qt.Vertical)
+                onSplitVerticalRequested: paneTree.split(viewId, Qt.Vertical)
+                onMaximizeRequested: paneTree.toggleMaximize(node)
+                onActivateRequested: paneTree.activeLeaf = node
                 // demo 不限制 close —— 可以一直关到空。宿主想限制就加：
                 //   enabled: paneTree.leafCount > 1
                 onCloseRequested: paneTree.close(viewId)

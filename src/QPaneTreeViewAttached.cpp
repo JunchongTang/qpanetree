@@ -67,6 +67,15 @@ void QPaneTreeViewAttached::setRatio(qreal r)
     emit changed();
 }
 
+void QPaneTreeViewAttached::setIsActive(bool a)
+{
+    if (m_isActive == a) {
+        return;
+    }
+    m_isActive = a;
+    emit changed();
+}
+
 // 拖完同步 ratio——从 splitContainer.contentChildren[0] 取实际尺寸算比例，
 // 写回 model.updateRatio(nodeId, ratio)。
 // 之所以让用户传 splitContainer：因为 splitDelegate 可以是任意容器（SplitView

@@ -93,13 +93,25 @@ void QPaneNode::setViewId(const QString& id)
     emit viewIdChanged();
 }
 
-// Leaf → Split 原地升级——保持 QML 对象指针稳定，避免 binding 丢
+void QPaneNode::setData(const QVariant& data)
+{
+    if (m_data == data) {
+        return;
+    }
+    m_data = data;
+    emit dataChanged();
+}
+
+// Leaf → Split 原地升级——保持 QML 对象指针稳定，避免 binding 丢。
+// data 在 Split 节点没有语义，清掉避免幻觉数据残留。
 void QPaneNode::promoteToSplit(Qt::Orientation orientation,
                                qreal ratio,
                                QPaneNode* first,
                                QPaneNode* second)
 {
     m_viewId = {};
+    const bool hadData = m_data.isValid();
+    m_data = {};
     m_orientation = orientation;
     m_ratio = qBound(0.1, ratio, 0.9);
     m_first = first;
@@ -120,14 +132,20 @@ void QPaneNode::promoteToSplit(Qt::Orientation orientation,
     emit secondChanged();
     emit orientationChanged();
     emit ratioChanged();
+    if (hadData) {
+        emit dataChanged();
+    }
 }
 
-// Split → Leaf 原地降级——丢 first/second（不 delete，由调用方接管），切回 Leaf
-void QPaneNode::demoteToLeaf(const QString& viewId)
+// Split → Leaf 原地降级——丢 first/second（不 delete，由调用方接管），切回 Leaf。
+// 调用方需要传入 sibling 的 viewId + data，让"survived"的 leaf 身份完整迁移。
+void QPaneNode::demoteToLeaf(const QString& viewId, const QVariant& data)
 {
     m_first = nullptr;
     m_second = nullptr;
     m_viewId = viewId;
+    const bool dataChangedSignal = (m_data != data);
+    m_data = data;
 
     const NodeType oldType = m_nodeType;
     m_nodeType = NodeType::Leaf;
@@ -137,6 +155,9 @@ void QPaneNode::demoteToLeaf(const QString& viewId)
     emit firstChanged();
     emit secondChanged();
     emit viewIdChanged();
+    if (dataChangedSignal) {
+        emit dataChanged();
+    }
 }
 
 QVariantMap QPaneNode::toVariantMap() const
@@ -145,6 +166,9 @@ QVariantMap QPaneNode::toVariantMap() const
     if (m_nodeType == NodeType::Leaf) {
         map[QStringLiteral("type")] = QStringLiteral("leaf");
         map[QStringLiteral("viewId")] = m_viewId;
+        if (m_data.isValid()) {
+            map[QStringLiteral("data")] = m_data;
+        }
     } else {
         map[QStringLiteral("type")] = QStringLiteral("split");
         map[QStringLiteral("orientation")] = static_cast<int>(m_orientation);
@@ -163,7 +187,11 @@ QPaneNode* QPaneNode::fromVariantMap(const QVariantMap& map, QObject* parent)
 {
     const QString type = map.value(QStringLiteral("type")).toString();
     if (type == QLatin1String("leaf")) {
-        return makeLeaf(map.value(QStringLiteral("viewId")).toString(), parent);
+        auto* leaf = makeLeaf(map.value(QStringLiteral("viewId")).toString(), parent);
+        if (map.contains(QStringLiteral("data"))) {
+            leaf->m_data = map.value(QStringLiteral("data"));
+        }
+        return leaf;
     }
     const auto orientation = static_cast<Qt::Orientation>(
         map.value(QStringLiteral("orientation"), Qt::Horizontal).toInt());
