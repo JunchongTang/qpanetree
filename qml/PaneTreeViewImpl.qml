@@ -22,6 +22,12 @@ import PaneTree
 Item {
     id: root
 
+    // 每个节点(窗格/子树)在父 SplitView 里的最小像素尺寸 —— 防止拖到内容(会话栏
+    // 等)重叠的窄度。SplitView 按自身 orientation 取 minimumWidth 或 minimumHeight,
+    // 并在**拖动过程中**实时夹住(非松手才生效)。非 SplitView 子项时该 attached 被忽略。
+    SplitView.minimumWidth: 220
+    SplitView.minimumHeight: 140
+
     property var view
     property var model
     property Component leafDelegate
