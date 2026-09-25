@@ -64,3 +64,4 @@ cmake_install.cmake
 # misc
 .cache/
 .DS_Store
+.qmlls.ini
