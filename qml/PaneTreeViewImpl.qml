@@ -10,7 +10,10 @@
 //   node             —— 当前节点；顶层默认 model.root，递归层由父传入
 //
 // 工作流：
-//   Leaf  → Loader 加载 leafDelegate，把 attached 注入到加载的 item
+//   Leaf  → **插槽**：向 view 要这个 viewId 的 delegate 实例（QPaneTreeView 按
+//           viewId 缓存，见那边的头注），reparent 进来。**不在这儿建、也不在这儿毁**
+//           —— 本文件在树结构一变时整棵重建，delegate 建在这儿的话一次分割就会把
+//           幸存那一格的内容销毁重建。
 //   Split → Loader 加载 splitDelegate；后续 dynamically createObject 两份
 //           PaneTreeViewImpl.qml 作为它的 children（SplitView 自动按 orientation
 //           layout 这两个 child）
@@ -53,26 +56,59 @@ Item {
                          : root.node.isSplit ? splitWrap : leafWrap
     }
 
-    // ── Leaf wrapper ─────────────────────────────────────────────────────
+    // ── Leaf slot ────────────────────────────────────────────────────────
+    //
+    // 只是个**挂载点**。实例归 QPaneTreeView 按 viewId 缓存，这里 acquire / release。
+    //
+    // attached property 也不在这儿写了：实例比本文件活得长，`Qt.binding(() => root.node)`
+    // 这种绑到渲染层作用域的写法在本文件销毁之后就悬空。改由 QPaneTreeView 在模型
+    // 变化时推（refreshAttached）—— node/isActive 本来就是模型的事。
     Component {
         id: leafWrap
-        Loader {
+        Item {
+            id: slot
             anchors.fill: parent
-            sourceComponent: root.leafDelegate
-            onLoaded: if (item) {
-                item.PaneTreeView.view = root.view
-                item.PaneTreeView.model = root.model
-                item.PaneTreeView.node = Qt.binding(() => root.node)
-                item.PaneTreeView.nodeId = Qt.binding(() => {
-                    return root.node ? root.node.nodeId : ""
-                })
-                item.PaneTreeView.viewId = Qt.binding(() => {
-                    return root.node ? root.node.viewId : ""
-                })
-                item.PaneTreeView.isActive = Qt.binding(() => {
-                    return root.model && root.node
-                        && root.model.activeLeaf === root.node
-                })
+
+            readonly property string vid: root.node ? root.node.viewId : ""
+            //! 当前挂着的那份实例。给下面两条尺寸 Binding 用。
+            property Item leaf: null
+            //! 已经 acquire 过的 viewId。节点被换成另一个 view（move / restoreState）
+            //! 时要先把上一个放回去，否则它会一直挂在一个已经不属于它的插槽上。
+            property string mountedVid: ""
+
+            function _mount() {
+                if (slot.mountedVid === slot.vid)
+                    return
+                if (slot.mountedVid !== "" && root.view)
+                    root.view.releaseLeaf(slot.mountedVid, slot)
+                slot.mountedVid = slot.vid
+                slot.leaf = (root.view && slot.vid !== "")
+                            ? root.view.acquireLeaf(slot.vid, slot) : null
+            }
+
+            onVidChanged: _mount()
+            Component.onCompleted: _mount()
+            Component.onDestruction: if (root.view && slot.mountedVid !== "")
+                                         root.view.releaseLeaf(slot.mountedVid, slot)
+
+            // 挂载期间由插槽驱动实例的尺寸。
+            //
+            // **restoreMode: RestoreNone** —— 插槽销毁时 Binding 跟着没，默认的
+            // RestoreBindingOrValue 会把宽高退回 0。让宽度在分割那一瞬间过一趟 0，
+            // 宿主里的终端就会按 0 列回流一次（vim / less 这类全屏程序当场刷花）。
+            Binding {
+                target: slot.leaf
+                property: "width"
+                value: slot.width
+                when: slot.leaf !== null
+                restoreMode: Binding.RestoreNone
+            }
+            Binding {
+                target: slot.leaf
+                property: "height"
+                value: slot.height
+                when: slot.leaf !== null
+                restoreMode: Binding.RestoreNone
             }
         }
     }

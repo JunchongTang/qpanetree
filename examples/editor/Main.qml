@@ -19,6 +19,9 @@ ApplicationWindow {
         property var splitLayout
     }
 
+    //! 一共建过几份 leaf delegate 实例。见下面 leafDelegate 里的注释。
+    property int leafInstancesBuilt: 0
+
     Component.onCompleted: {
         if (settings.splitLayout) paneTree.restoreState(settings.splitLayout)
         else                      paneTree.reset("editor-1")
@@ -88,7 +91,10 @@ ApplicationWindow {
             }
             Item { Layout.fillWidth: true }
             Label {
+                // "建过 N 份" 跟 "面板数" 分开显示:库不重建 delegate 的话,前者只会在
+                // **新开面板**时涨。分屏若让它多涨,就是渲染层又在重建了。
                 text: "面板数: " + paneTree.leafCount
+                    + " · 建过 " + window.leafInstancesBuilt + " 份"
                     + (paneTree.maximizedLeaf ? " · 最大化" : "")
                     + (paneTree.activeLeaf ? " · active=" + paneTree.activeLeaf.viewId : "")
                 color: "#858585"
@@ -104,6 +110,13 @@ ApplicationWindow {
 
         leafDelegate: Component {
             EditorPanel {
+                // 建了第几份实例。**分屏之后幸存那一格的号不该变** —— 库按 viewId
+                // 缓存 leaf delegate,树结构变化不重建它(见 README「leaf delegate 的
+                // 生命周期」)。这个计数器就是用来一眼看出有没有被重建的。
+                //
+                // 必须**赋值**不能写成绑定:`instanceSeq: ++window.leafInstancesBuilt`
+                // 读写同一个属性,是个绑定环(QML 会一直刷,号码疯涨)。
+                Component.onCompleted: instanceSeq = ++window.leafInstancesBuilt
                 onSplitHorizontalRequested: paneTree.split(viewId, Qt.Horizontal)
                 onSplitVerticalRequested: paneTree.split(viewId, Qt.Vertical)
                 onMaximizeRequested: paneTree.toggleMaximize(node)
